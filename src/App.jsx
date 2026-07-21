@@ -1,3 +1,4 @@
+import React from 'react';
 import { useEffect, useState } from 'react'
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Heart, MapPin, Menu, Minus, PackageCheck, Phone, Plus, ShoppingBag, Sparkles, Star, X } from 'lucide-react'
 
