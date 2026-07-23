@@ -1,8 +1,8 @@
 import React from 'react';
 import { useEffect, useState } from 'react'
-import { ArrowRight, Check, ChevronLeft, ChevronRight, Heart, MapPin, Menu, Minus, PackageCheck, Phone, Plus, ShoppingBag, Sparkles, Star, X } from 'lucide-react'
+import { ArrowRight, Check, ChevronLeft, ChevronRight, Heart, MapPin, Menu, Minus, PackageCheck, Phone, Plus, ShoppingBag, Sparkles, Star, X, LogIn, LogOut, ShieldCheck } from 'lucide-react'
 
-const products = [
+const defaultProducts = [
   { id: 'desi-ghee', name: 'Desi Ghee', category: 'Ghee', sizes: '500g · 1kg · 5kg', price: 450, image: '/assets/desi-ghee.png', note: 'Traditional richness in every spoon.' },
   { id: 'cow-ghee', name: 'Cow Ghee', category: 'Ghee', sizes: '500g · 1kg · 5kg', price: 500, image: '/assets/cow-ghee.png', note: 'Golden, aromatic and wholesome.' },
   { id: 'buffalo-ghee', name: 'Buffalo Ghee', category: 'Ghee', sizes: '500g · 1kg · 5kg', price: 430, image: '/assets/buffalo-ghee.png', note: 'Creamy flavour for everyday cooking.' },
@@ -11,6 +11,7 @@ const products = [
   { id: 'gulab-jamun', name: 'Gulab Jamun', category: 'Sweets', sizes: '250g · 500g · 1kg', price: 160, image: '/assets/gulab-jamun.png', note: 'A classic made with care.' },
 ]
 const formatPrice = (price) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(price)
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 export default function App() {
   const [cart, setCart] = useState([])
@@ -20,15 +21,22 @@ export default function App() {
   const [selected, setSelected] = useState(null)
   const [toast, setToast] = useState('')
   const [spotlightIndex, setSpotlightIndex] = useState(0)
+  const [catalog, setCatalog] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('dhayal-product-catalog')) || defaultProducts } catch { return defaultProducts }
+  })
+  const [adminView, setAdminView] = useState(null)
+  const [adminToken, setAdminToken] = useState('')
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0)
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const filtered = activeCategory === 'All' ? products : products.filter((product) => product.category === activeCategory)
+  const filtered = activeCategory === 'All' ? catalog : catalog.filter((product) => product.category === activeCategory)
 
   useEffect(() => {
     if (!toast) return undefined
     const timeout = setTimeout(() => setToast(''), 2400)
     return () => clearTimeout(timeout)
   }, [toast])
+  useEffect(() => { localStorage.setItem('dhayal-product-catalog', JSON.stringify(catalog)) }, [catalog])
+  useEffect(() => { fetch(`${API_URL}/products`).then((response) => response.ok ? response.json() : null).then((products) => { if (products) setCatalog(products) }).catch(() => {}) }, [])
 
   function addToCart(product) {
     setCart((items) => {
@@ -45,9 +53,9 @@ export default function App() {
     const message = `Hello Dhayal Food Products! I'd like to order:%0A${cart.map((item) => `• ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`).join('%0A')}%0A%0ATotal: ${formatPrice(total)}`
     window.open(`https://wa.me/918279287203?text=${message}`, '_blank', 'noopener,noreferrer')
   }
-  const spotlight = products[spotlightIndex]
+  const spotlight = catalog[spotlightIndex % catalog.length]
   function moveSpotlight(direction) {
-    setSpotlightIndex((index) => (index + direction + products.length) % products.length)
+    setSpotlightIndex((index) => (index + direction + catalog.length) % catalog.length)
   }
   function goToProducts() {
     document.querySelector('#products').scrollIntoView({ behavior: 'smooth' })
@@ -55,6 +63,27 @@ export default function App() {
   function goToContact() {
     document.querySelector('#contact').scrollIntoView({ behavior: 'smooth' })
   }
+  async function updatePrice(id, price) {
+    const nextPrice = Number(price) || 0
+    setCatalog((items) => items.map((item) => item.id === id ? { ...item, price: nextPrice } : item))
+    if (adminToken) await fetch(`${API_URL}/products/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ price: nextPrice }) })
+  }
+  async function createProduct(product) {
+    if (adminToken) {
+      const response = await fetch(`${API_URL}/products`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` }, body: JSON.stringify(product) })
+      if (!response.ok) throw new Error('Unable to save product.')
+      const createdProduct = await response.json()
+      setCatalog((items) => [...items, createdProduct]); return
+    }
+    setCatalog((items) => [...items, { ...product, id: `${Date.now()}-${product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` }])
+  }
+  async function adminLogin(password) {
+    const response = await fetch(`${API_URL}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) })
+    if (!response.ok) throw new Error('Incorrect password. Please try again.')
+    const { token } = await response.json(); setAdminToken(token)
+  }
+
+  if (adminView) return <AdminPage catalog={catalog} onClose={() => setAdminView(null)} onLogin={adminLogin} onUpdatePrice={updatePrice} onCreateProduct={createProduct} />
 
   return <>
     <header className="header">
@@ -68,6 +97,7 @@ export default function App() {
       </div>
       <nav className={`nav ${mobileNav ? 'nav-open' : ''}`}><div className="container nav-inner">
         {['Home', 'About', 'Featured product', 'Products', 'Our promise', 'Contact'].map((label) => <a onClick={() => setMobileNav(false)} href={`#${label === 'Home' ? 'home' : label === 'Our promise' ? 'about' : label.toLowerCase().replace(' ', '-')}`} key={label}>{label}</a>)}
+        <button className="admin-nav-button" onClick={() => setAdminView('login')}><LogIn size={16} /> Admin Login</button>
         <button onClick={openWhatsApp}>Order on WhatsApp <ArrowRight size={16} /></button>
       </div></nav>
     </header>
@@ -100,4 +130,22 @@ export default function App() {
     {drawerOpen && <div className="drawer-layer" onMouseDown={() => setDrawerOpen(false)}><aside className="cart-drawer" onMouseDown={(event) => event.stopPropagation()}><div className="drawer-title"><div><span className="eyebrow">Your selection</span><h2>Your basket ({cartCount})</h2></div><button onClick={() => setDrawerOpen(false)} aria-label="Close cart"><X /></button></div>{cart.length ? <><div className="cart-items">{cart.map((item) => <div className="cart-item" key={item.id}><img src={item.image} alt="" /><div><b>{item.name}</b><small>{formatPrice(item.price)}</small><div className="quantity"><button onClick={() => updateQuantity(item.id, -1)}><Minus size={13} /></button><span>{item.quantity}</span><button onClick={() => updateQuantity(item.id, 1)}><Plus size={13} /></button></div></div><strong>{formatPrice(item.price * item.quantity)}</strong></div>)}</div><div className="checkout"><div><span>Subtotal</span><b>{formatPrice(total)}</b></div><button className="primary-button" onClick={openWhatsApp}>Order on WhatsApp <ArrowRight size={17} /></button></div></> : <div className="empty-cart"><ShoppingBag /><h3>Your basket is waiting</h3><p>Add your favourite products and order in a few taps.</p><button onClick={() => { setDrawerOpen(false); document.querySelector('#products').scrollIntoView({ behavior: 'smooth' }) }}>Explore products</button></div>}</aside></div>}
     {selected && <div className="drawer-layer modal-layer" onMouseDown={() => setSelected(null)}><div className="quick-view" onMouseDown={(event) => event.stopPropagation()}><button className="close-modal" onClick={() => setSelected(null)}><X /></button><img src={selected.image} alt={selected.name} /><div><span className="product-category">{selected.category}</span><h2>{selected.name}</h2><p>{selected.note}</p><small>Available in: {selected.sizes}</small><strong>{formatPrice(selected.price)}</strong><button className="primary-button" onClick={() => { addToCart(selected); setSelected(null) }}><ShoppingBag size={17} /> Add to basket</button></div></div></div>}
   </>
+}
+
+function AdminPage({ catalog, onClose, onLogin, onUpdatePrice, onCreateProduct }) {
+  const [authenticated, setAuthenticated] = useState(false)
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [draft, setDraft] = useState({ name: '', category: 'Ghee', sizes: '500g / 1kg', price: '', image: '/assets/desi-ghee.png', note: '' })
+  async function login(event) {
+    event.preventDefault()
+    try { await onLogin(password); setAuthenticated(true); setError('') } catch (loginError) { setError(loginError.message || 'Unable to reach the backend.') }
+  }
+  async function submitProduct(event) {
+    event.preventDefault()
+    if (!draft.name || !draft.price) return
+    try { await onCreateProduct({ ...draft, price: Number(draft.price), note: draft.note || 'Freshly prepared by Dhayal Food Products.' }); setDraft({ name: '', category: 'Ghee', sizes: '500g / 1kg', price: '', image: '/assets/desi-ghee.png', note: '' }) } catch (saveError) { setError(saveError.message || 'Unable to save product.') }
+  }
+  if (!authenticated) return <main className="admin-page"><section className="admin-login-card"><ShieldCheck /><span className="eyebrow">Dhayal Food Products</span><h1>Admin login</h1><p>Manage your product list and prices from one place.</p><form onSubmit={login}><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter admin password" autoFocus /></label>{error && <small className="admin-error">{error}</small>}<button className="primary-button" type="submit">Sign in <LogIn size={17} /></button></form><button className="admin-back" onClick={onClose}>Back to website</button></section></main>
+  return <main className="admin-page"><section className="admin-dashboard"><header className="admin-dashboard-head"><div><span className="eyebrow">Store management</span><h1>Product control center</h1><p>Add products or change the prices shown on your website.</p></div><button className="admin-back" onClick={onClose}><LogOut size={16} /> Exit admin</button></header><div className="admin-content"><section className="admin-products"><h2>Current products</h2>{catalog.map((product) => <article className="admin-product-row" key={product.id}><img src={product.image} alt="" /><div><b>{product.name}</b><small>{product.category} · {product.sizes}</small></div><label>Price (INR)<input type="number" min="0" value={product.price} onChange={(event) => onUpdatePrice(product.id, event.target.value)} /></label></article>)}</section><section className="admin-add"><h2>Add a product</h2><form onSubmit={submitProduct}><label>Product name<input required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>Category<select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}><option>Ghee</option><option>Fresh dairy</option><option>Sweets</option></select></label><label>Available sizes<input value={draft.sizes} onChange={(event) => setDraft({ ...draft, sizes: event.target.value })} /></label><label>Price (INR)<input required type="number" min="0" value={draft.price} onChange={(event) => setDraft({ ...draft, price: event.target.value })} /></label><label>Product image path or URL<input value={draft.image} onChange={(event) => setDraft({ ...draft, image: event.target.value })} /></label><label>Description<textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></label><button className="primary-button" type="submit"><Plus size={17} /> Add product</button></form></section></div></section></main>
 }
