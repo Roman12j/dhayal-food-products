@@ -11,7 +11,7 @@ const defaultProducts = [
   { id: 'gulab-jamun', name: 'Gulab Jamun', category: 'Sweets', sizes: '250g · 500g · 1kg', price: 160, image: '/assets/gulab-jamun.png', note: 'A classic made with care.' },
 ]
 const formatPrice = (price) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(price)
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:5000/api')
 
 export default function App() {
   const [cart, setCart] = useState([])
